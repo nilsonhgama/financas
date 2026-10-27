@@ -80,8 +80,29 @@ export function makeDefaultState(): AppState {
         { id: 'v_out', name: 'Outros Gastos' }
       ]
     },
-    values: {}
+    values: {},
+    paid: {}
   };
+}
+
+export function isPaid(state: AppState, monthId: string, itemId: string): boolean {
+  return !!(state.paid && state.paid[monthId] && state.paid[monthId][itemId]);
+}
+
+/** Totais de pago/pendente de um mês, apenas considerando despesas (fixas + variáveis). */
+export function calcPaidTotals(state: AppState, mId: string): { paid: number; pending: number } {
+  const vMap = state.values[mId] || {};
+  const pMap = (state.paid && state.paid[mId]) || {};
+  let paid = 0;
+  let pending = 0;
+  (['fixas', 'variaveis'] as GroupKey[]).forEach((key) => {
+    (state.groups[key] || []).forEach((item) => {
+      const val = vMap[item.id] || 0;
+      if (pMap[item.id]) paid += val;
+      else pending += val;
+    });
+  });
+  return { paid, pending };
 }
 
 export function calcMonthTotals(state: AppState, mId: string): MonthTotals {
