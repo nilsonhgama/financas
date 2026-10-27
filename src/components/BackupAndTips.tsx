@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { AppState } from '../types/finance';
-import { calcMonthTotals, money } from '../utils/formatters';
+import { calcMonthTotals, calcPaidTotals, money, monthName } from '../utils/formatters';
 
 interface BackupAndTipsProps {
   state: AppState;
+  curMonthId: string;
   onRestoreState: (newState: AppState) => void;
+  onToast: (msg: string) => void;
 }
 
 const WA_PHONE_KEY = 'financas_wa_phone';
 
-export const BackupAndTips: React.FC<BackupAndTipsProps> = ({ state, onRestoreState }) => {
+type ReportScope = 'month' | 'year';
+
+export const BackupAndTips: React.FC<BackupAndTipsProps> = ({ state, curMonthId, onRestoreState, onToast }) => {
   const [bkText, setBkText] = useState('');
   const [msg, setMsg] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [waPhone, setWaPhone] = useState('');
+  const [scope, setScope] = useState<ReportScope>('month');
+  const [phoneError, setPhoneError] = useState('');
 
   useEffect(() => {
     try {
@@ -55,24 +61,26 @@ export const BackupAndTips: React.FC<BackupAndTipsProps> = ({ state, onRestoreSt
     setShowModal(true);
   };
 
-  const handleConfirmSendWhatsApp = (e: React.FormEvent) => {
-    e.preventDefault();
+  const buildMonthlyReport = (monthId: string): string => {
+    const m = state.months.find((mm) => mm.id === monthId);
+    const name = m ? m.name : monthName(monthId);
+    const { e, f, v, s } = calcMonthTotals(state, monthId);
+    const { paid, pending } = calcPaidTotals(state, monthId);
 
-    let rawDigits = waPhone.replace(/\D/g, '');
+    let report = `📊 *RELATÓRIO DE FINANÇAS - ${name}/${state.year}*\n\n`;
+    report += `💰 Entradas: ${money(e)}\n`;
+    report += `📌 Fixas: ${money(f)}\n`;
+    report += `🛒 Variáveis: ${money(v)}\n`;
+    report += `👉 *Saldo do mês:* ${money(s)}\n\n`;
+    report += `✅ Pago: ${money(paid)}\n`;
+    report += `⏳ Pendente: ${money(pending)}\n\n`;
 
-    if (!rawDigits) {
-      alert('Por favor, informe um número de telefone com DDD.');
-      return;
-    }
+    report += `📦 *CÓDIGO DE BACKUP (para restaurar no app):*\n`;
+    report += `${JSON.stringify(state)}`;
+    return report;
+  };
 
-    if (rawDigits.length === 10 || rawDigits.length === 11) {
-      rawDigits = '55' + rawDigits;
-    }
-
-    try {
-      localStorage.setItem(WA_PHONE_KEY, waPhone);
-    } catch (err) {}
-
+  const buildAnnualReport = (): string => {
     let report = `📊 *RELATÓRIO DE FINANÇAS ${state.year}*\n\n`;
 
     let totalEntradas = 0;
@@ -102,12 +110,35 @@ export const BackupAndTips: React.FC<BackupAndTipsProps> = ({ state, onRestoreSt
 
     report += `📦 *CÓDIGO DE BACKUP (para restaurar no app):*\n`;
     report += `${JSON.stringify(state)}`;
+    return report;
+  };
+
+  const handleConfirmSendWhatsApp = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    let rawDigits = waPhone.replace(/\D/g, '');
+
+    if (!rawDigits) {
+      setPhoneError('Informe um número de telefone com DDD.');
+      return;
+    }
+    setPhoneError('');
+
+    if (rawDigits.length === 10 || rawDigits.length === 11) {
+      rawDigits = '55' + rawDigits;
+    }
+
+    try {
+      localStorage.setItem(WA_PHONE_KEY, waPhone);
+    } catch (err) {}
+
+    const report = scope === 'month' ? buildMonthlyReport(curMonthId) : buildAnnualReport();
 
     const url = `https://wa.me/${rawDigits}?text=${encodeURIComponent(report)}`;
     window.open(url, '_blank');
 
     setShowModal(false);
-    setMsg('Abrindo WhatsApp para enviar o relatório...');
+    onToast('Abrindo WhatsApp para enviar o relatório...');
   };
 
   return (
@@ -154,6 +185,28 @@ export const BackupAndTips: React.FC<BackupAndTipsProps> = ({ state, onRestoreSt
             <p>
               Digite o número do seu WhatsApp (com DDD). Ele ficará salvo <b>neste dispositivo</b> para envios futuros.
             </p>
+
+            <div className="scope-seg" role="tablist" aria-label="Período do relatório">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={scope === 'month'}
+                className={scope === 'month' ? 'active' : ''}
+                onClick={() => setScope('month')}
+              >
+                📅 Este mês
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={scope === 'year'}
+                className={scope === 'year' ? 'active' : ''}
+                onClick={() => setScope('year')}
+              >
+                📈 Ano todo
+              </button>
+            </div>
+
             <form onSubmit={handleConfirmSendWhatsApp}>
               <input
                 type="tel"
@@ -163,6 +216,11 @@ export const BackupAndTips: React.FC<BackupAndTipsProps> = ({ state, onRestoreSt
                 onChange={(e) => setWaPhone(e.target.value)}
                 autoFocus
               />
+              {phoneError && (
+                <p style={{ color: 'var(--bad)', fontSize: '13px', marginTop: '-10px', marginBottom: '14px' }}>
+                  {phoneError}
+                </p>
+              )}
               <div className="modal-actions">
                 <button
                   type="button"

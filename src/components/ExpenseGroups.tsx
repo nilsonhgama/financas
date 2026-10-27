@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
 import { AppState, GroupKey } from '../types/finance';
-import { fmtIn, GROUPS_CONFIG, money, monthName, parseNum, uid } from '../utils/formatters';
+import { fmtIn, GROUPS_CONFIG, isPaid, money, monthName, parseNum, uid } from '../utils/formatters';
 
 interface ExpenseGroupsProps {
   state: AppState;
   curMonthId: string;
   onUpdateState: (newState: AppState) => void;
   onClearMonth: () => void;
+  onTogglePaid: (monthId: string, itemId: string) => void;
 }
 
 export const ExpenseGroups: React.FC<ExpenseGroupsProps> = ({
   state,
   curMonthId,
   onUpdateState,
-  onClearMonth
+  onClearMonth,
+  onTogglePaid
 }) => {
   const [armedDelId, setArmedDelId] = useState<string | null>(null);
   const [armedClearMonth, setArmedClearMonth] = useState<boolean>(false);
 
   const monthValues = state.values[curMonthId] || {};
+  const monthPaid = state.paid[curMonthId] || {};
 
   const handleValueChange = (itemId: string, valStr: string) => {
     const numVal = parseNum(valStr);
@@ -64,8 +67,15 @@ export const ExpenseGroups: React.FC<ExpenseGroupsProps> = ({
       }
     });
 
+    const newPaid = { ...state.paid };
+    Object.keys(newPaid).forEach((mKey) => {
+      if (newPaid[mKey]) {
+        delete newPaid[mKey][itemId];
+      }
+    });
+
     setArmedDelId(null);
-    onUpdateState({ ...state, groups: newGroups, values: newValues });
+    onUpdateState({ ...state, groups: newGroups, values: newValues, paid: newPaid });
   };
 
   const handleClearMonthClick = () => {
@@ -90,6 +100,11 @@ export const ExpenseGroups: React.FC<ExpenseGroupsProps> = ({
             (acc, it) => acc + (monthValues[it.id] || 0),
             0
           );
+          const isExpenseGroup = grp.key === 'fixas' || grp.key === 'variaveis';
+          const groupPaidTotal = isExpenseGroup
+            ? items.reduce((acc, it) => acc + (monthPaid[it.id] ? monthValues[it.id] || 0 : 0), 0)
+            : 0;
+          const groupPendingTotal = groupTotal - groupPaidTotal;
 
           return (
             <section
@@ -102,13 +117,32 @@ export const ExpenseGroups: React.FC<ExpenseGroupsProps> = ({
                 <output>{money(groupTotal)}</output>
               </div>
 
+              {isExpenseGroup && groupTotal > 0 && (
+                <div className="g-paid-sub">
+                  <span className="pill pill-ok">Pago: {money(groupPaidTotal)}</span>
+                  <span className="pill pill-pending">Pendente: {money(groupPendingTotal)}</span>
+                </div>
+              )}
+
               <ul className="rows">
                 {items.map((it) => {
                   const val = monthValues[it.id] || 0;
                   const isArmed = armedDelId === it.id;
+                  const paid = isExpenseGroup && isPaid(state, curMonthId, it.id);
 
                   return (
-                    <li key={it.id} className="row" data-id={it.id}>
+                    <li key={it.id} className={`row ${paid ? 'paid' : ''}`} data-id={it.id}>
+                      {isExpenseGroup && (
+                        <button
+                          type="button"
+                          className={`pay-toggle ${paid ? 'on' : ''}`}
+                          aria-pressed={paid}
+                          aria-label={paid ? 'Marcar como não pago' : 'Marcar como pago'}
+                          onClick={() => onTogglePaid(curMonthId, it.id)}
+                        >
+                          {paid ? '✓' : ''}
+                        </button>
+                      )}
                       <input
                         className="name"
                         type="text"

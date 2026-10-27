@@ -20,6 +20,10 @@ export const App: React.FC = () => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.months) && parsed.groups && parsed.values) {
+          // Migração: dados antigos não tinham o campo `paid`. Assume "não pago".
+          if (!parsed.paid) {
+            parsed.paid = {};
+          }
           return parsed;
         }
       }
@@ -28,6 +32,7 @@ export const App: React.FC = () => {
   });
 
   const [curMonthId, setCurMonthId] = useState<string>(() => state.months[0].id);
+  const [toast, setToast] = useState<string>('');
 
   /* Persistir no localStorage sempre que o estado mude */
   useEffect(() => {
@@ -35,6 +40,13 @@ export const App: React.FC = () => {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch (e) {}
   }, [state]);
+
+  /* Toast simples para feedback não-bloqueante (substitui alert()) */
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 2800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const handleSelectMonth = (monthId: string) => {
     setCurMonthId(monthId);
@@ -56,17 +68,23 @@ export const App: React.FC = () => {
       newValues[m.id] = { ...janValues };
     });
     setState({ ...state, values: newValues });
-    alert(`Valores de ${state.months[0].name} replicados para os 12 meses do ano!`);
+    setToast(`Valores de ${state.months[0].name} replicados para os 12 meses do ano!`);
   };
 
   const handleClearAllData = () => {
     const defaultSt = makeDefaultState();
     setState(defaultSt);
     setCurMonthId(defaultSt.months[0].id);
-    alert('Todos os dados foram resetados!');
+    setToast('Todos os dados foram resetados!');
   };
 
   const curTotals = calcMonthTotals(state, curMonthId);
+
+  const handleTogglePaid = (monthId: string, itemId: string) => {
+    const monthPaid = { ...(state.paid[monthId] || {}) };
+    monthPaid[itemId] = !monthPaid[itemId];
+    setState({ ...state, paid: { ...state.paid, [monthId]: monthPaid } });
+  };
 
   return (
     <div className="app">
@@ -101,6 +119,7 @@ export const App: React.FC = () => {
               curMonthId={curMonthId}
               onUpdateState={(newState) => setState(newState)}
               onClearMonth={handleClearMonthValues}
+              onTogglePaid={handleTogglePaid}
             />
           </div>
         ) : (
@@ -114,12 +133,20 @@ export const App: React.FC = () => {
 
         <BackupAndTips
           state={state}
+          curMonthId={curMonthId}
           onRestoreState={(newState) => {
             setState(newState);
             setCurMonthId(newState.months[0].id);
           }}
+          onToast={setToast}
         />
       </main>
+
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
     </div>
   );
 };

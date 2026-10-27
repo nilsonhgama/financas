@@ -24,11 +24,14 @@ export interface FinanceGroups {
 
 export type ValuesMap = Record<string, Record<string, number>>; // monthId -> itemId -> number
 
+export type PaidMap = Record<string, Record<string, boolean>>; // monthId -> itemId -> pago?
+
 export interface AppState {
   year: number;
   months: MonthInfo[];
   groups: FinanceGroups;
   values: ValuesMap;
+  paid: PaidMap;
 }
 
 export interface MonthTotals {
